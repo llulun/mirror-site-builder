@@ -65,7 +65,7 @@ docker run -d \
   -e ADMIN_USER=admin \
   -e ADMIN_PASS=your_secure_password \
   --name sub-mirror \
-  sub-mirror:latest
+  ghcr.io/llulun/mirror-site-builder:latest
 ```
 
 ## ⚙️ 配置说明
