@@ -1,0 +1,54 @@
+{
+  "name": "sub-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "description": "轻量级订阅镜像与管理工具：解决配置同步不稳定问题，支持多源缓存、正则过滤与高速分发",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node --experimental-modules tests/e2e.js",
+    "test:security": "node --experimental-modules tests/security.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky install"
+  },
+  "bin": {
+    "msb": "bin/msb.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "compression": "^1.7.4",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.0",
+    "helmet": "^8.1.0",
+    "http-proxy-middleware": "^3.0.0",
+    "morgan": "^1.10.0",
+    "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-n": "^17.23.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.7.4"
+  },
+  "lint-staged": {
+    "*.{js,ts,html,md,json}": [
+      "prettier --write"
+    ],
+    "src/**/*.js": [
+      "eslint --fix"
+    ]
+  }
+}

@@ -1,0 +1,1865 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>SubMirror</title>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <style>
+      :root {
+        /* Palette: Slate (Neutral) */
+        --color-slate-50: #f8fafc;
+        --color-slate-100: #f1f5f9;
+        --color-slate-200: #e2e8f0;
+        --color-slate-300: #cbd5e1;
+        --color-slate-400: #94a3b8;
+        --color-slate-500: #64748b;
+        --color-slate-600: #475569;
+        --color-slate-700: #334155;
+        --color-slate-800: #1e293b;
+        --color-slate-900: #0f172a;
+        --color-slate-950: #020617;
+
+        /* Palette: Indigo (Primary) */
+        --color-indigo-50: #eef2ff;
+        --color-indigo-500: #6366f1;
+        --color-indigo-600: #4f46e5;
+        --color-indigo-700: #4338ca;
+
+        /* Palette: Red (Danger) */
+        --color-red-500: #ef4444;
+        --color-red-600: #dc2626;
+
+        /* Palette: Emerald (Success) */
+        --color-emerald-500: #10b981;
+
+        /* Palette: Amber (Warning) */
+        --color-amber-500: #f59e0b;
+
+        /* Dark Theme Variables (Default) */
+        --bg-app: var(--color-slate-950);
+        --bg-surface: var(--color-slate-900);
+        --bg-element: var(--color-slate-800);
+        --bg-element-hover: var(--color-slate-700);
+
+        --border-subtle: var(--color-slate-800);
+        --border-default: var(--color-slate-700);
+
+        --text-primary: var(--color-slate-50);
+        --text-secondary: var(--color-slate-400);
+        --text-tertiary: var(--color-slate-500);
+
+        --color-primary: var(--color-indigo-500);
+        --color-primary-hover: var(--color-indigo-600);
+
+        --color-danger: var(--color-red-500);
+        --color-success: var(--color-emerald-500);
+        --color-warn: var(--color-amber-500);
+
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+        --nav-height: 64px;
+        --header-height: 60px;
+      }
+
+      :root[data-theme='light'] {
+        --bg-app: var(--color-slate-50);
+        --bg-surface: #ffffff;
+        --bg-element: var(--color-slate-100);
+        --bg-element-hover: var(--color-slate-200);
+
+        --border-subtle: var(--color-slate-200);
+        --border-default: var(--color-slate-300);
+
+        --text-primary: var(--color-slate-900);
+        --text-secondary: var(--color-slate-500);
+        --text-tertiary: var(--color-slate-400);
+
+        --color-primary: var(--color-indigo-600);
+        --color-primary-hover: var(--color-indigo-700);
+
+        --color-danger: var(--color-red-600);
+
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.06);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body {
+        font-family:
+          'Inter',
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background-color: var(--bg-app);
+        color: var(--text-primary);
+        margin: 0;
+        line-height: 1.5;
+        height: 100vh;
+        overflow: hidden; /* App-like structure */
+        -webkit-font-smoothing: antialiased;
+        transition:
+          background-color 0.3s ease,
+          color 0.3s ease;
+      }
+
+      /* --- View Management --- */
+      .view {
+        position: absolute;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        background-color: var(--bg-app);
+        z-index: 10;
+      }
+      .view.active {
+        display: flex;
+      }
+
+      /* --- Login View --- */
+      #view-login {
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 50; /* Above main view */
+      }
+      .login-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 24px;
+        padding: 40px 32px;
+        width: 100%;
+        max-width: 400px;
+        box-shadow: var(--shadow-lg);
+        text-align: center;
+      }
+      .login-logo {
+        width: 64px;
+        height: 64px;
+        background: var(--color-primary);
+        color: #fff;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+      }
+      .login-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .login-subtitle {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        margin-bottom: 32px;
+      }
+
+      /* --- Main View Layout --- */
+      .app-header {
+        height: var(--header-height);
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        flex-shrink: 0;
+        z-index: 20;
+      }
+      .app-title {
+        font-weight: 700;
+        font-size: 1.125rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .app-content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+        padding-bottom: 80px; /* Space for FAB/BottomNav */
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      }
+
+      .tab-content {
+        display: none;
+        padding: 20px;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .tab-content.active {
+        display: block;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* --- Bottom Navigation --- */
+      .bottom-nav {
+        height: var(--nav-height);
+        background: var(--bg-surface);
+        border-top: 1px solid var(--border-subtle);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 30;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        gap: 4px;
+        cursor: pointer;
+        transition: color 0.2s;
+        border: none;
+        background: none;
+        padding: 0;
+      }
+      .nav-item svg {
+        width: 24px;
+        height: 24px;
+        stroke-width: 2;
+        transition: transform 0.2s;
+      }
+      .nav-item.active {
+        color: var(--color-primary);
+      }
+      .nav-item.active svg {
+        transform: translateY(-2px);
+        stroke-width: 2.5;
+      }
+      .nav-item:active svg {
+        transform: scale(0.9);
+      }
+
+      /* --- Components --- */
+      /* Buttons & Inputs */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 16px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s;
+        width: 100%;
+      }
+      .btn-primary {
+        background: var(--color-primary);
+        color: #fff;
+        box-shadow: var(--shadow-md);
+      }
+      .btn-primary:active {
+        transform: scale(0.98);
+        opacity: 0.9;
+      }
+      .btn-secondary {
+        background: var(--bg-element);
+        color: var(--text-primary);
+        border-color: var(--border-default);
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--text-secondary);
+        width: auto;
+        padding: 8px;
+      }
+      .btn-danger {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--color-danger);
+        border: none;
+      }
+
+      .input-group {
+        margin-bottom: 16px;
+        text-align: left;
+      }
+      .input-label {
+        display: block;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        font-weight: 500;
+      }
+      .input-field {
+        width: 100%;
+        padding: 12px;
+        border-radius: 12px;
+        background: var(--bg-element);
+        border: 1px solid var(--border-default);
+        color: var(--text-primary);
+        font-size: 1rem;
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+        box-sizing: border-box;
+      }
+      .input-field:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      }
+
+      /* Subscription List */
+      .sub-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 16px;
+        margin-bottom: 16px;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+      }
+      .sub-card:active {
+        transform: scale(0.99);
+      }
+
+      .sub-head {
+        padding: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+      }
+      .sub-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .sub-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sub-url {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        font-family: monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .sub-body-wrap {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .sub-card.expanded .sub-body-wrap {
+        grid-template-rows: 1fr;
+      }
+      .sub-body {
+        overflow: hidden;
+        background: var(--bg-element);
+      }
+      .sub-inner {
+        padding: 16px;
+        border-top: 1px solid var(--border-subtle);
+      }
+
+      /* Settings & Profile List */
+      .settings-group {
+        background: var(--bg-surface);
+        border-radius: 16px;
+        border: 1px solid var(--border-subtle);
+        overflow: hidden;
+        margin-bottom: 24px;
+      }
+      .settings-item {
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .settings-item:last-child {
+        border-bottom: none;
+      }
+      .settings-label {
+        font-weight: 500;
+      }
+      .settings-val {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+
+      /* Search Bar */
+      .search-bar {
+        padding: 12px 20px;
+        background: var(--bg-surface);
+        position: sticky;
+        top: 0;
+        z-index: 15;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .search-input-wrap {
+        position: relative;
+      }
+      .search-input-wrap svg {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-secondary);
+      }
+      .search-input {
+        width: 100%;
+        padding: 10px 10px 10px 36px;
+        border-radius: 10px;
+        border: none;
+        background: var(--bg-element);
+        color: var(--text-primary);
+        font-size: 0.95rem;
+      }
+
+      /* FAB */
+      .fab {
+        position: fixed;
+        bottom: calc(var(--nav-height) + 20px);
+        right: 20px;
+        width: 56px;
+        height: 56px;
+        border-radius: 28px;
+        background: var(--color-primary);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+        border: none;
+        cursor: pointer;
+        z-index: 40;
+        transition: transform 0.2s;
+      }
+      .fab:active {
+        transform: scale(0.9);
+      }
+
+      /* Badges */
+      .badge {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: var(--bg-element);
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+      }
+      .badge.active {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--color-emerald-500);
+        border-color: transparent;
+      }
+      .badge.danger {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--color-red-500);
+        border-color: transparent;
+      }
+
+      /* Modal & Toast (Reused but refined) */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: flex-end;
+        z-index: 100;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      .modal-overlay.open {
+        display: flex;
+        opacity: 1;
+      }
+      .sheet {
+        background: var(--bg-surface);
+        width: 100%;
+        border-radius: 24px 24px 0 0;
+        padding: 24px;
+        max-height: 90vh;
+        overflow-y: auto;
+        transform: translateY(100%);
+        transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.2, 1);
+      }
+      .modal-overlay.open .sheet {
+        transform: translateY(0);
+      }
+
+      .toast {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-20px);
+        background: var(--color-slate-800);
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 30px;
+        opacity: 0;
+        transition: all 0.3s;
+        z-index: 200;
+        box-shadow: var(--shadow-lg);
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+      }
+
+      /* Desktop Tweaks */
+      @media (min-width: 768px) {
+        .bottom-nav {
+          top: 0;
+          bottom: auto;
+          left: 0;
+          width: 240px;
+          height: 100vh;
+          flex-direction: column;
+          justify-content: flex-start;
+          padding: 80px 0 0;
+          border-top: none;
+          border-right: 1px solid var(--border-subtle);
+        }
+        .nav-item {
+          height: 56px;
+          width: 100%;
+          flex-direction: row;
+          justify-content: flex-start;
+          padding-left: 32px;
+          gap: 12px;
+          font-size: 1rem;
+          flex: 0 0 auto;
+        }
+        .app-content {
+          margin-left: 240px;
+          padding-bottom: 20px;
+        }
+        .app-header {
+          margin-left: 240px;
+        }
+        .fab {
+          right: 40px;
+          bottom: 40px;
+        }
+        .modal-overlay {
+          align-items: center;
+          justify-content: center;
+        }
+        .sheet {
+          width: 480px;
+          border-radius: 24px;
+          transform: scale(0.95);
+          opacity: 0;
+        }
+        .modal-overlay.open .sheet {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- === VIEW: LOGIN === -->
+    <div id="view-login" class="view">
+      <div class="login-card">
+        <div class="login-logo">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+        <div class="login-title">欢迎回来</div>
+        <div class="login-subtitle">请登录以管理您的镜像订阅</div>
+
+        <div class="input-group">
+          <label class="input-label">账号</label>
+          <input id="loginUser" class="input-field" placeholder="请输入管理员账号" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">密码</label>
+          <input id="loginPass" type="password" class="input-field" placeholder="请输入密码" />
+        </div>
+
+        <!-- 
+           --- CLOUDFLARE TURNSTILE CONFIGURATION ---
+           Replace 'data-sitekey' below with your actual Site Key from Cloudflare Dashboard.
+           Currently using a dummy test key: 1x00000000000000000000AA
+        -->
+        <div id="cf-turnstile" class="cf-turnstile" data-sitekey="1x00000000000000000000AA" style="margin-bottom: 16px; display: flex; justify-content: center;"></div>
+
+        <button id="btnLogin" class="btn btn-primary" style="margin-top: 16px" data-action="login">登 录</button>
+      </div>
+    </div>
+
+    <!-- === VIEW: MAIN APP === -->
+    <div id="view-main" class="view">
+      <header class="app-header">
+        <div class="app-title">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            style="color: var(--color-primary)"
+          >
+            <path
+              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span id="headerTitle">SubMirror</span>
+        </div>
+        <div>
+          <!-- Optional Header Actions -->
+        </div>
+      </header>
+
+      <div class="app-content">
+        <!-- TAB 0: Dashboard -->
+        <div id="tab-dash" class="tab-content">
+           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+              <h2 style="margin:0">概览</h2>
+              <div class="flex-row" style="gap:12px">
+                 <span class="badge active" id="dash-auto-badge" style="font-weight:normal; display:none">自动刷新</span>
+                 <button class="btn btn-ghost btn-sm" data-action="toggleDashAuto">
+                    <svg id="dash-refresh-icon" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="pointer-events:none"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                 </button>
+              </div>
+           </div>
+           
+           <!-- Cards -->
+           <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px">
+              <div class="settings-group" style="margin:0; padding:20px; text-align:center">
+                 <div style="font-size:0.9rem; color:var(--text-secondary)">今日访问量</div>
+                 <div id="dash-today" style="font-size:2rem; font-weight:700; color:var(--color-primary)">-</div>
+              </div>
+              <div class="settings-group" style="margin:0; padding:20px; text-align:center">
+                 <div style="font-size:0.9rem; color:var(--text-secondary)">安全警告</div>
+                 <div id="dash-alerts" style="font-size:2rem; font-weight:700; color:var(--color-danger)">0</div>
+              </div>
+           </div>
+
+           <!-- Charts Area -->
+           <div class="settings-group" style="padding:16px; margin-bottom:24px">
+              <h4 style="margin-top:0; margin-bottom:16px">Top IP 来源</h4>
+              <div id="dash-top-ip"></div>
+           </div>
+           
+           <div class="settings-group" style="padding:16px; margin-bottom:24px">
+              <h4 style="margin-top:0; margin-bottom:16px">热门 User-Agent</h4>
+              <div id="dash-top-ua"></div>
+           </div>
+
+           <!-- Logs -->
+           <h4 style="margin-bottom:12px">最新访问记录</h4>
+           <div id="dash-logs" style="font-family:monospace; font-size:0.8rem; background:var(--bg-element); border-radius:12px; padding:12px; height:300px; overflow-y:auto; border:1px solid var(--border-subtle)">
+              <!-- logs -->
+           </div>
+           <div style="height:80px"></div>
+        </div>
+
+        <!-- TAB 1: Subscriptions -->
+        <div id="tab-subs" class="tab-content">
+          <div class="search-bar" style="margin: -20px -20px 20px; border-radius: 0">
+            <div class="search-input-wrap">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input id="searchInput" class="search-input" placeholder="搜索订阅源..." />
+            </div>
+          </div>
+          <div id="subsList">
+            <!-- Sub Items Render Here -->
+          </div>
+          <div style="height: 80px"></div>
+          <!-- Spacer -->
+        </div>
+
+        <!-- TAB 2: Monitor (Logs) -->
+        <div id="tab-monitor" class="tab-content">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 16px;
+            "
+          >
+            <h3 style="margin: 0">实时日志</h3>
+            <div class="flex-row">
+              <span class="badge active" style="font-weight: normal">自动刷新</span>
+              <button class="btn btn-ghost btn-sm" data-action="refreshMonitor">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="pointer-events:none">
+                  <path d="M23 4v6h-6" />
+                  <path d="M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div
+            id="log-viewer"
+            style="
+              background: #1e293b;
+              border: 1px solid var(--border-subtle);
+              border-radius: 12px;
+              padding: 16px;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              font-size: 0.8rem;
+              height: 60vh;
+              overflow-y: auto;
+              color: #e2e8f0;
+              white-space: pre-wrap;
+              line-height: 1.6;
+            "
+          >
+            <div style="text-align: center; padding: 20px; opacity: 0.5">正在连接日志流...</div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Settings (Sync/Status) -->
+        <div id="tab-settings" class="tab-content">
+          <h3 style="margin-top: 0">系统状态</h3>
+          <div class="settings-group">
+            <div class="settings-item">
+              <span class="settings-label">服务状态</span>
+              <span class="badge active" id="st-status">运行中</span>
+            </div>
+            <div class="settings-item">
+              <span class="settings-label">上次全局刷新</span>
+              <span class="settings-val" id="st-updated">-</span>
+            </div>
+            <div class="settings-item">
+              <span class="settings-label">内存占用</span>
+              <span class="settings-val" id="st-memory">-</span>
+            </div>
+          </div>
+
+          <h3>全局操作</h3>
+          <div class="settings-group">
+            <div class="settings-item" data-action="refreshAll" style="cursor: pointer">
+              <span class="settings-label" style="color: var(--color-primary)"
+                >立即触发全局同步</span
+              >
+              <svg width="20" height="20" stroke="currentColor" fill="none" viewBox="0 0 24 24" style="pointer-events:none">
+                <path d="M23 4v6h-6" />
+                <path d="M1 20v-6h6" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            </div>
+          </div>
+
+          <h3>偏好设置</h3>
+          <div class="settings-group">
+            <div class="settings-item">
+              <span class="settings-label">主题模式</span>
+              <select
+                id="themeSelect"
+                style="
+                  background: none;
+                  border: none;
+                  text-align: right;
+                  font-size: 0.9rem;
+                  color: var(--text-secondary);
+                "
+              >
+                <option value="auto">跟随系统</option>
+                <option value="light">浅色模式</option>
+                <option value="dark">深色模式</option>
+              </select>
+            </div>
+          </div>
+
+          <h3>通知设置</h3>
+          <div class="settings-group">
+             <div style="padding:16px">
+                <div class="input-group" style="margin-bottom:0">
+                   <label class="input-label">Webhook URL (失败时通知)</label>
+                   <div style="display:flex; gap:8px">
+                      <input id="webhookInput" class="input-field" placeholder="https://oapi.dingtalk.com/..." />
+                      <button class="btn btn-primary" style="width:auto" data-action="saveSettings">保存</button>
+                      <button class="btn btn-secondary" style="width:auto" data-action="testWebhook">测试</button>
+                   </div>
+                   <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:8px">支持钉钉、飞书、Telegram 等 Webhook。仅在同步失败时发送 POST 请求。</div>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Profile -->
+        <div id="tab-profile" class="tab-content">
+          <div style="text-align: center; padding: 40px 0">
+            <div
+              style="
+                width: 80px;
+                height: 80px;
+                background: var(--bg-element);
+                border-radius: 50%;
+                margin: 0 auto 16px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--color-primary);
+              "
+            >
+              <svg
+                width="40"
+                height="40"
+                stroke="currentColor"
+                fill="none"
+                stroke-width="1.5"
+                viewBox="0 0 24 24"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </div>
+            <h2 id="profileUser" style="margin: 0; font-size: 1.5rem">Admin</h2>
+            <p class="text-secondary" style="margin: 8px 0 0">Administrator</p>
+          </div>
+
+          <div class="settings-group">
+            <div class="settings-item">
+              <span class="settings-label">API Token</span>
+              <span class="settings-val text-mono" style="font-size: 0.8rem">••••••••</span>
+            </div>
+            <div class="settings-item">
+              <span class="settings-label">当前版本</span>
+              <span class="settings-val">v1.0.0</span>
+            </div>
+          </div>
+
+          <button class="btn btn-danger" data-action="logout">退出登录</button>
+        </div>
+      </div>
+
+      <!-- Floating Action Button -->
+      <button class="fab" id="fabAdd" data-action="openEditor">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="pointer-events:none"
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+
+      <nav class="bottom-nav">
+        <button id="nav-btn-dash" class="nav-item active" data-tab="dash">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none">
+             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+           </svg>
+           <span style="pointer-events:none">概览</span>
+        </button>
+        <button id="nav-btn-subs" class="nav-item" data-tab="subs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="pointer-events:none">
+            <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span style="pointer-events:none">订阅管理</span>
+        </button>
+        <button id="nav-btn-monitor" class="nav-item" data-tab="monitor">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="pointer-events:none">
+            <polyline points="4 17 10 11 14 16 20 10" />
+            <line x1="4" y1="21" x2="20" y2="21" />
+            <line x1="4" y1="3" x2="20" y2="3" />
+          </svg>
+          <span style="pointer-events:none">日志监控</span>
+        </button>
+        <button id="nav-btn-settings" class="nav-item" data-tab="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="pointer-events:none">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+          <span style="pointer-events:none">同步设置</span>
+        </button>
+        <button id="nav-btn-profile" class="nav-item" data-tab="profile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" style="pointer-events:none">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <span style="pointer-events:none">我的</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- === COMPONENT: EDITOR SHEET === -->
+    <div id="sheet-overlay" class="modal-overlay">
+      <div class="sheet">
+        <h3 id="sheet-title" style="margin-top: 0; margin-bottom: 24px">添加订阅</h3>
+        <input type="hidden" id="editId" />
+
+        <div class="input-group">
+          <label class="input-label">名称备注</label>
+          <input id="editName" class="input-field" placeholder="例如：主力节点" />
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">订阅链接 URL</label>
+          <input id="editUrl" class="input-field" placeholder="https://..." />
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">同步频率</label>
+          <div style="display: flex; gap: 12px">
+            <input id="editInterval" type="number" class="input-field" value="30" />
+            <select id="editUnit" class="input-field" style="width: 120px">
+              <option value="minutes">分钟</option>
+              <option value="hours">小时</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin: 24px 0">
+          <div
+            data-action="toggleAdv"
+            style="
+              color: var(--color-primary);
+              font-size: 0.9rem;
+              font-weight: 500;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              gap: 4px;
+            "
+          >
+            <span style="pointer-events:none">高级选项</span>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="pointer-events:none">
+              <path
+                d="M19 9l-7 7-7-7"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <div id="adv-area" style="display: none; margin-top: 16px">
+            <div class="input-group">
+              <label class="input-label">User-Agent</label>
+              <input id="editUA" class="input-field" placeholder="默认 UA" />
+            </div>
+            <div class="input-group">
+              <label class="input-label">包含正则 (逗号分隔)</label>
+              <input id="editInclude" class="input-field" />
+            </div>
+            <div class="input-group">
+              <label class="input-label">排除正则 (逗号分隔)</label>
+              <input id="editExclude" class="input-field" />
+            </div>
+            <div
+              style="
+                margin-top: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <div
+                id="token-display"
+                style="font-family: monospace; font-size: 0.8rem; color: var(--text-secondary)"
+              ></div>
+              <button
+                id="btnDel"
+                class="btn btn-danger"
+                style="width: auto; padding: 6px 12px; font-size: 0.85rem"
+                data-action="delSub"
+              >
+                删除订阅
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 12px">
+          <button class="btn btn-secondary" data-action="closeEditor">取消</button>
+          <button class="btn btn-primary" data-action="saveEditor">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- === COMPONENT: PREVIEW MODAL === -->
+    <div id="preview-overlay" class="modal-overlay">
+       <div class="sheet" style="height:80vh; display:flex; flex-direction:column;">
+          <h3 style="margin-top:0; margin-bottom:16px">内容预览</h3>
+          <div style="flex:1; overflow:hidden; background:#1e293b; border-radius:12px; border:1px solid var(--border-subtle)">
+             <pre id="preview-content" style="margin:0; padding:16px; height:100%; overflow:auto; color:#e2e8f0; font-family:monospace; font-size:0.8rem; white-space:pre-wrap;"></pre>
+          </div>
+          <div style="margin-top:16px; text-align:right">
+             <button class="btn btn-secondary" data-action="closePreview">关闭</button>
+          </div>
+       </div>
+    </div>
+
+    <!-- === COMPONENT: HISTORY MODAL === -->
+    <div id="history-overlay" class="modal-overlay">
+       <div class="sheet" style="max-height:80vh; display:flex; flex-direction:column;">
+          <h3 style="margin-top:0; margin-bottom:16px">历史版本回滚</h3>
+          <div id="history-list" style="flex:1; overflow-y:auto; margin-bottom:16px">
+             <!-- Items -->
+          </div>
+          <div style="text-align:right">
+             <button class="btn btn-secondary" data-action="closeHistory">关闭</button>
+          </div>
+       </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+      // --- Global Error Handler ---
+      window.onerror = function(msg, url, line, col, error) {
+         const toast = document.getElementById('toast');
+         if (toast) {
+            toast.textContent = '系统错误: ' + msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 5000);
+         }
+         console.error('Global Error:', msg, error);
+         return false;
+      };
+
+      // --- Utilities ---
+      window.$ = (id) => document.getElementById(id);
+      window.els = (sel) => document.querySelectorAll(sel);
+      window.escapeHtml = (str) => {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      };
+
+      window.Toast = {
+        show(msg) {
+          const t = $('toast');
+          if(!t) return alert(msg); // Fallback
+          t.textContent = msg;
+          t.classList.add('show');
+          setTimeout(() => t.classList.remove('show'), 2500);
+        },
+      };
+
+      // --- Theme ---
+      window.Theme = {
+        init() {
+          try {
+             const saved = localStorage.getItem('theme') || 'auto';
+             const sel = $('themeSelect');
+             if(sel) {
+                sel.value = saved;
+                sel.onchange = (e) => this.apply(e.target.value);
+             }
+             this.apply(saved);
+             if (window.matchMedia) {
+                window.matchMedia('(prefers-color-scheme: dark)').onchange = () => {
+                   if (sel && sel.value === 'auto') this.apply('auto');
+                };
+             }
+          } catch(e) { console.error('Theme init error', e); }
+        },
+        apply(mode) {
+          try {
+             localStorage.setItem('theme', mode);
+             const isDark =
+               mode === 'auto'
+                 ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+                 : mode === 'dark';
+             document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+          } catch(e) {}
+        },
+      };
+
+      // --- Auth & API ---
+      window.API = {
+        base: location.origin,
+        get headers() {
+          const t = localStorage.getItem('authToken');
+          return t
+            ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }
+            : { 'Content-Type': 'application/json' };
+        },
+        async req(path, opts = {}) {
+          try {
+            const r = await fetch(this.base + path, {
+              ...opts,
+              headers: { ...this.headers, ...opts.headers },
+            });
+            if (r.status === 401) {
+              Auth.logout();
+              return null;
+            }
+            return r;
+          } catch (e) {
+            console.error('API Error:', e);
+            Toast.show('网络错误或服务不可用');
+            return null;
+          }
+        },
+      };
+
+      window.Auth = {
+        init() {
+          const btnLogin = $('btnLogin');
+          // Removed manual onclick binding in favor of global data-action delegation
+          // if (btnLogin) { btnLogin.onclick = ... }
+
+          if (localStorage.getItem('authToken')) {
+            Router.go('main');
+            // Defer tab switch slightly to ensure DOM is ready
+            setTimeout(() => {
+               Tabs.show('dash');
+               App.load();
+            }, 50);
+          } else {
+            Router.go('login');
+          }
+        },
+        logout() {
+          localStorage.removeItem('authToken');
+          Router.go('login');
+        },
+      };
+
+      // --- Navigation ---
+      window.Router = {
+        go(view) {
+          els('.view').forEach((el) => {
+             el.classList.remove('active');
+             el.style.display = 'none';
+          });
+          const target = $(`view-${view}`);
+          if(target) {
+             target.classList.add('active');
+             // ALWAYS use flex, as our CSS .view layout relies on flex-direction: column
+             // to handle scrolling correctly (header fixed, content scroll)
+             target.style.display = 'flex'; 
+          }
+        },
+      };
+
+      window.Tabs = {
+        show(tab) {
+          console.log('Tabs.show called with:', tab);
+          try {
+            // 1. Hide all tabs
+            els('.tab-content').forEach((el) => {
+               el.classList.remove('active');
+               el.style.display = 'none'; 
+            });
+            
+            // 2. Show target tab
+            const target = $(`tab-${tab}`);
+            if (target) {
+               target.classList.add('active');
+               target.style.display = 'block'; 
+               window.scrollTo(0, 0); // Reset scroll
+            } else {
+               return Toast.show('Tab not found: ' + tab);
+            }
+
+            // 3. Update Nav
+            els('.nav-item').forEach((el) => el.classList.remove('active'));
+            // Try ID match first
+            let navBtn = $(`nav-btn-${tab}`);
+            // Fallback to data attribute if ID not found
+            if (!navBtn) {
+               navBtn = document.querySelector(`.nav-item[data-tab="${tab}"]`);
+            }
+            if (navBtn) navBtn.classList.add('active');
+
+            // 4. Update Header
+            const titles = {
+              dash: '概览',
+              subs: '订阅管理',
+              monitor: '实时监控',
+              settings: '同步设置',
+              profile: '我的账户',
+            };
+            const headerTitle = $('headerTitle');
+            if (headerTitle) headerTitle.textContent = titles[tab] || 'Mirror Builder';
+
+            // 5. FAB
+            const fab = $('fabAdd');
+            if (fab) fab.style.display = tab === 'subs' ? 'flex' : 'none';
+
+            // 6. Module Lifecycle
+            if (window.Monitor) {
+                if (tab === 'monitor') Monitor.start();
+                else Monitor.stop();
+            }
+            if (window.Dash) {
+                if (tab === 'dash') Dash.start();
+                else Dash.stop();
+            }
+          } catch (e) {
+            console.error('Tab switch error:', e);
+            Toast.show('Switch Error: ' + e.message);
+          }
+        },
+      };
+
+      // --- Dashboard ---
+      window.Dash = {
+        timer: null,
+        active: false,
+        start() {
+           if (this.active) return;
+           this.active = true;
+           this.refresh();
+           this.timer = setInterval(() => {
+              if (this.auto && this.active) this.refresh();
+           }, 5000);
+        },
+        stop() {
+           this.active = false;
+           if (this.timer) clearInterval(this.timer);
+           this.timer = null;
+        },
+        auto: false,
+        toggleAuto() {
+           this.auto = !this.auto;
+           const badge = $('dash-auto-badge');
+           if(badge) badge.style.display = this.auto ? 'inline-block' : 'none';
+           if(this.auto) this.refresh();
+        },
+        async refresh() {
+           if (!this.active) return;
+           const icon = $('dash-refresh-icon');
+           if(icon) icon.style.opacity = '0.5';
+           try {
+             const r = await API.req('/stats');
+             if (!r || !r.ok) return;
+             const d = await r.json();
+             
+             if ($('dash-today')) $('dash-today').textContent = d.today || 0;
+             if ($('dash-alerts')) $('dash-alerts').textContent = (d.alerts || []).length;
+             
+             // Render Helpers
+             const renderBar = (label, count, max) => {
+                const pct = max ? (count / max * 100) : 0;
+                return `
+                   <div style="margin-bottom:8px">
+                      <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px">
+                         <span style="font-family:monospace">${escapeHtml(label)}</span>
+                         <span>${count}</span>
+                      </div>
+                      <div style="background:var(--bg-element); height:6px; border-radius:3px; overflow:hidden">
+                         <div style="background:var(--color-primary); width:${pct}%; height:100%"></div>
+                      </div>
+                   </div>`;
+             };
+             
+             const maxIP = d.topIPs.length ? d.topIPs[0].count : 0;
+             if ($('dash-top-ip')) {
+                $('dash-top-ip').innerHTML = d.topIPs.length 
+                   ? d.topIPs.map(i => renderBar(i.ip, i.count, maxIP)).join('')
+                   : '<div style="opacity:0.5; font-size:0.8rem">暂无数据</div>';
+             }
+  
+             const maxUA = d.topUAs.length ? d.topUAs[0].count : 0;
+             if ($('dash-top-ua')) {
+                $('dash-top-ua').innerHTML = d.topUAs.length 
+                   ? d.topUAs.map(i => renderBar(i.ua.length > 30 ? i.ua.slice(0,30)+'...' : i.ua, i.count, maxUA)).join('')
+                   : '<div style="opacity:0.5; font-size:0.8rem">暂无数据</div>';
+             }
+  
+             // Logs
+             if ($('dash-logs')) {
+                $('dash-logs').innerHTML = d.recentLogs.map(l => {
+                   let col = '#e2e8f0';
+                   if(l.status >= 400) col = '#ef4444';
+                   else if(l.status >= 200 && l.status < 300) col = '#10b981';
+                   
+                   const diff = (new Date() - new Date(l.ts)) / 1000;
+                   let timeStr = new Date(l.ts).toLocaleTimeString();
+                   if (diff < 60) timeStr = '刚刚';
+                   else if (diff < 3600) timeStr = Math.floor(diff/60) + '分钟前';
+                   
+                   return `<div style="margin-bottom:4px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px">
+                      <span style="color:${col}">[${l.status}]</span> 
+                      <span style="opacity:0.5; margin:0 8px; font-size:0.75rem">${timeStr}</span>
+                      <span>${escapeHtml(l.ip)}</span>
+                      <div style="opacity:0.5; font-size:0.75rem; margin-left:40px">${escapeHtml(l.ua)}</div>
+                   </div>`;
+                }).join('') || '<div style="text-align:center; padding:20px; opacity:0.5">暂无日志</div>';
+             }
+           } catch(e) { console.error(e); } 
+           finally { if(icon) icon.style.opacity = '1'; }
+        }
+      };
+
+      // --- Monitor ---
+      window.Monitor = {
+        active: false,
+        timer: null,
+        start() {
+          if (this.active) return;
+          this.active = true;
+          this.refresh();
+          this.timer = setInterval(() => {
+             if(this.active) this.refresh();
+          }, 3000);
+        },
+        stop() {
+          this.active = false;
+          if (this.timer) clearInterval(this.timer);
+        },
+        async refresh() {
+          if (!this.active) return;
+          try {
+             const r = await API.req('/logs');
+             const el = $('log-viewer');
+             if(!el) return;
+
+             if (r && r.ok) {
+               const d = await r.json();
+               const logs = d.logs || [];
+               if (!logs.length) {
+                 el.innerHTML = '<div style="text-align:center; padding:20px; opacity:0.5">暂无日志记录</div>';
+               } else {
+                 el.innerHTML = logs.map((l) => {
+                   const ts = new Date(l.ts).toLocaleTimeString();
+                   let col = '#e2e8f0';
+                   if (l.level === 'error') col = '#ef4444';
+                   if (l.level === 'success') col = '#10b981';
+                   if (l.level === 'info') col = '#94a3b8';
+                   return `<div style="color:${col}; margin-bottom:4px">
+                        <span style="opacity:0.5; margin-right:8px">[${ts}]</span><span>${escapeHtml(l.message)}</span>
+                     </div>`;
+                 }).join('');
+               }
+             } else {
+                const errInfo = r ? `${r.status} ${r.statusText}` : 'Network Error';
+                el.innerHTML = `<div style="text-align:center; padding:20px; opacity:0.5; color:var(--color-danger)">连接日志流失败 (${errInfo})</div>`;
+             }
+             el.scrollTop = el.scrollHeight;
+          } catch(e) { console.error('Monitor error:', e); }
+        },
+      };
+
+      // --- App Logic ---
+      window.App = {
+        data: null,
+        async load() {
+          const uElem = $('profileUser');
+          if(uElem) uElem.textContent = localStorage.getItem('username') || 'Admin';
+
+          try {
+             // Load Status & Subs
+             const [stRes, srcRes] = await Promise.all([
+               API.req('/status').then((r) => (r ? r.json() : {})),
+               API.req('/sources').then((r) => (r ? r.json() : null)),
+             ]);
+   
+             if (stRes) {
+               if($('st-updated')) $('st-updated').textContent = stRes.updatedAt ? new Date(stRes.updatedAt).toLocaleTimeString() : '从未';
+               if($('st-memory')) $('st-memory').textContent = stRes.memory ? Math.round(stRes.memory / 1024 / 1024) + ' MB' : '-';
+               if($('webhookInput')) $('webhookInput').value = stRes.webhook || '';
+             }
+   
+             this.data = srcRes || { items: [], activeId: null };
+             this.renderSubs(this.data.items || []);
+          } catch(e) {
+             console.error('App load error', e);
+             Toast.show('数据加载失败');
+             // Still render empty subs to avoid blank page
+             this.renderSubs([]);
+          }
+        },
+
+        renderSubs(items) {
+          const list = $('subsList');
+          if(!list) return;
+          list.innerHTML = '';
+          if (!items || !items.length) {
+            list.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-secondary)">暂无订阅，点击右下角添加</div>`;
+            return;
+          }
+
+          items.forEach((item) => {
+            const el = document.createElement('div');
+            el.className = 'sub-card';
+            const isActive = item.id === this.data.activeId;
+            const isEnabled = !!item.enabled;
+
+            el.innerHTML = `
+                  <div class="sub-head">
+                     <div class="sub-main">
+                        <div class="sub-name">
+                           ${escapeHtml(item.name || '未命名')}
+                           ${isActive ? '<span class="badge active" style="border-color:var(--color-primary); color:var(--color-primary)">默认源</span>' : ''}
+                           ${isEnabled ? '<span class="badge active">自动同步中</span>' : '<span class="badge">已暂停</span>'}
+                           ${item.lastSyncStatus === 'error' ? '<span class="badge danger">同步失败</span>' : ''}
+                        </div>
+                        <div class="sub-url">${escapeHtml(item.url)}</div>
+                        ${item.updatedAt ? `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:4px">上次同步: ${new Date(item.updatedAt).toLocaleString()}</div>` : ''}
+                     </div>
+                     <div style="color:var(--text-secondary)">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="pointer-events:none"><path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                     </div>
+                  </div>
+                  <div class="sub-body-wrap"><div class="sub-body"><div class="sub-inner">
+                     ${item.lastError ? `<div style="background:rgba(239,68,68,0.1); color:var(--color-danger); padding:8px 12px; border-radius:8px; font-size:0.85rem; margin-bottom:12px;">❌ ${escapeHtml(item.lastError)}</div>` : ''}
+                     <div style="display:flex; gap:12px; margin-bottom:16px; align-items:center;">
+                        <span class="badge">${item.minutes}分钟同步</span>
+                        <span class="badge">${item.ua ? '自定义UA' : '默认UA'}</span>
+                        <label style="display:flex; align-items:center; gap:8px; margin-left:auto; cursor:pointer">
+                           <input type="checkbox" ${isEnabled ? 'checked' : ''} data-action="toggleSync" data-id="${item.id}">
+                           <span style="font-size:0.85rem">自动同步</span>
+                        </label>
+                     </div>
+                     <div style="display:flex; gap:8px">
+                        <button class="btn btn-primary" data-action="sync" data-id="${item.id}" style="width:auto">立即同步</button>
+                        <button class="btn btn-secondary" data-action="preview" data-id="${item.id}" data-token="${item.token}" style="width:auto">预览</button>
+                        <button class="btn btn-secondary" data-action="history" data-id="${item.id}" style="width:auto">历史</button>
+                        ${!isActive ? `<button class="btn btn-secondary" data-action="activate" data-id="${item.id}" style="flex:1">设为默认</button>` : ''}
+                        <button class="btn btn-secondary" data-action="edit" data-id="${item.id}" style="flex:1">编辑</button>
+                        <button class="btn btn-secondary" data-action="copy" data-id="${item.id}" data-token="${item.token}" style="width:auto">复制链接</button>
+                     </div>
+                  </div></div></div>
+               `;
+            list.appendChild(el);
+          });
+        },
+
+        async activate(id) {
+          await API.req(`/sources/${id}/activate`, { method: 'POST' });
+          this.load();
+          Toast.show('已设为默认订阅源');
+        },
+
+        async toggleSync(id, enabled) {
+           await API.req(`/sources/${id}/toggle-sync`, { 
+              method: 'POST', 
+              body: JSON.stringify({ enabled })
+           });
+           this.load();
+           Toast.show(enabled ? '已开启自动同步' : '已暂停自动同步');
+        },
+
+        copySub(id, token) {
+          const url = `${location.origin}/sub/${id}?token=${token}`;
+          navigator.clipboard.writeText(url);
+          Toast.show('订阅链接已复制');
+        },
+
+        async refreshAll() {
+          Toast.show('正在触发同步...');
+          const r = await API.req('/refresh', { method: 'POST' });
+          if (r && r.ok) {
+             Toast.show('同步成功');
+             this.load();
+          } else {
+             const d = r ? await r.json() : {};
+             Toast.show('同步失败: ' + (d.reason || 'Unknown'));
+          }
+        },
+
+        async sync(id) {
+           Toast.show('开始同步...');
+           const r = await API.req(`/sources/${id}/sync`, { method: 'POST' });
+           if (r && r.ok) {
+              Toast.show('同步成功');
+              this.load();
+           } else {
+              const d = r ? await r.json() : {};
+              Toast.show('同步失败: ' + (d.reason || 'Unknown'));
+           }
+        },
+
+        async preview(id, token) {
+            Toast.show('正在加载预览...');
+            try {
+               const res = await fetch(`/sub/${id}?token=${token}`);
+               if (!res.ok) throw new Error(res.status);
+               const text = await res.text();
+               const pre = $('preview-content');
+               if(pre) pre.textContent = text.slice(0, 50000) + (text.length > 50000 ? '\n... (truncated)' : '');
+               $('preview-overlay').classList.add('open');
+               document.body.style.overflow = 'hidden';
+            } catch (e) {
+               Toast.show('加载预览失败: ' + e.message);
+            }
+         },
+
+         async history(id) {
+            Toast.show('正在加载历史版本...');
+            const r = await API.req(`/sources/${id}/history`);
+            if (r && r.ok) {
+               const d = await r.json();
+               const list = $('history-list');
+               if (list) {
+                   if (!d.items || !d.items.length) {
+                      list.innerHTML = '<div style="text-align:center; padding:20px; opacity:0.5">暂无历史版本</div>';
+                   } else {
+                      list.innerHTML = d.items.map(f => `
+                         <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid var(--border-subtle)">
+                            <div>
+                               <div style="font-weight:500">${new Date(f.ts).toLocaleString()}</div>
+                               <div style="font-size:0.8rem; color:var(--text-secondary)">大小: ${Math.round(f.size/1024*100)/100} KB</div>
+                            </div>
+                            <button class="btn btn-secondary" style="width:auto; padding:6px 12px; font-size:0.85rem" data-action="rollback" data-id="${id}" data-filename="${f.name}">回滚</button>
+                         </div>
+                      `).join('');
+                   }
+               }
+               $('history-overlay').classList.add('open');
+               document.body.style.overflow = 'hidden';
+            } else {
+               Toast.show('获取历史版本失败');
+            }
+         },
+
+         async rollback(id, filename) {
+            if (!confirm('确定要回滚到此版本吗？这将覆盖当前的缓存文件。')) return;
+            Toast.show('正在回滚...');
+            const r = await API.req(`/sources/${id}/rollback`, {
+               method: 'POST',
+               body: JSON.stringify({ filename })
+            });
+            if (r && r.ok) {
+               Toast.show('回滚成功');
+               $('history-overlay').classList.remove('open');
+               this.load();
+            } else {
+               const d = r ? await r.json() : {};
+               Toast.show('回滚失败: ' + (d.message || 'Unknown'));
+            }
+         },
+
+         async saveSettings() {
+            const val = $('webhookInput').value;
+            const r = await API.req('/api/settings', {
+               method: 'POST',
+               body: JSON.stringify({ webhook: val })
+            });
+            if (r && r.ok) {
+               Toast.show('设置已保存');
+            } else {
+               Toast.show('保存失败');
+            }
+         },
+         
+         async testWebhook() {
+            Toast.show('正在发送测试通知...');
+            const r = await API.req('/api/test-webhook', { method: 'POST' });
+            if (r && r.ok) {
+               Toast.show('测试通知已发送');
+            } else {
+               const d = r ? await r.json() : {};
+               Toast.show('发送失败: ' + (d.message || 'Unknown'));
+            }
+         },
+       };
+
+      window.Editor = {
+        curr: null,
+        open() {
+          this.reset();
+          $('sheet-overlay').classList.add('open');
+          document.body.style.overflow = 'hidden'; // Lock body scroll
+          $('sheet-title').textContent = '添加订阅';
+          const delBtn = $('btnDel');
+          if(delBtn) {
+              delBtn.style.display = 'none';
+              delBtn.dataset.id = '';
+          }
+        },
+        edit(item) {
+          this.curr = item;
+          $('editId').value = item.id;
+          $('editName').value = item.name || '';
+          $('editUrl').value = item.url;
+          $('editInterval').value = item.minutes;
+          $('editUA').value = item.ua || '';
+          $('editInclude').value = (item.include || []).join(',');
+          $('editExclude').value = (item.exclude || []).join(',');
+          $('token-display').textContent = `Token: ${item.token}`;
+
+          $('sheet-overlay').classList.add('open');
+          document.body.style.overflow = 'hidden'; // Lock body scroll
+          $('sheet-title').textContent = '编辑订阅';
+          const delBtn = $('btnDel');
+          if(delBtn) {
+             delBtn.style.display = 'block';
+             delBtn.dataset.id = item.id;
+          }
+        },
+        close() {
+          $('sheet-overlay').classList.remove('open');
+          document.body.style.overflow = ''; // Unlock body scroll
+        },
+        reset() {
+          this.curr = null;
+          $('editName').value = '';
+          $('editUrl').value = '';
+          $('editInterval').value = '30';
+          $('editUA').value = '';
+          $('editInclude').value = '';
+          $('editExclude').value = '';
+          $('token-display').textContent = '';
+        },
+        async save() {
+          const body = {
+            name: $('editName').value,
+            url: $('editUrl').value,
+            minutes: parseInt($('editInterval').value),
+            ua: $('editUA').value,
+            include: $('editInclude').value,
+            exclude: $('editExclude').value,
+          };
+          if (!body.url) return Toast.show('请输入订阅链接');
+          
+          Toast.show('正在保存...'); // Feedback
+
+          const method = this.curr ? 'PUT' : 'POST';
+          const path = this.curr ? `/sources/${this.curr.id}` : '/sources';
+
+          const r = await API.req(path, { method, body: JSON.stringify(body) });
+          if (r && r.ok) {
+            this.close();
+            App.load();
+            Toast.show('保存成功');
+          } else {
+             Toast.show('保存失败');
+          }
+        },
+        async del(id) {
+          if (confirm('确定删除此订阅？')) {
+            await API.req(`/sources/${id}`, { method: 'DELETE' });
+            this.close();
+            App.load();
+            Toast.show('已删除');
+          }
+        },
+      };
+
+      // Global Toggles (Deprecated, moved to event delegation)
+      // window.toggleSub = ... 
+
+      window.toggleAdv = () => {
+        const el = $('adv-area');
+        if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      };
+
+      // --- Initialization ---
+      document.addEventListener('DOMContentLoaded', () => {
+         console.log('DOM Ready');
+         Theme.init();
+         Auth.init();
+         
+         // Event Delegation: Navigation
+         document.querySelectorAll('.nav-item').forEach(btn => {
+             btn.addEventListener('click', (e) => {
+                 let tab = btn.dataset.tab;
+                 if (!tab && btn.id && btn.id.startsWith('nav-btn-')) {
+                     tab = btn.id.replace('nav-btn-', '');
+                 }
+                 if (tab) Tabs.show(tab);
+             });
+         });
+
+         // Event Delegation: Subscription Actions
+         document.addEventListener('click', (e) => {
+            // Find closest element with data-action
+            // This ensures clicking on SVG/Icon inside a button still works
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            
+            // Only prevent default if it's a button or link to avoid side effects on inputs
+            if (target.tagName === 'BUTTON' || target.tagName === 'A') {
+               e.preventDefault();
+            }
+            e.stopPropagation(); 
+            
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            const token = target.dataset.token;
+
+            console.log('Action triggered:', action, id);
+
+            switch(action) {
+               case 'login': {
+                  const u = $('loginUser').value;
+                  const p = $('loginPass').value;
+                  let cfToken = null;
+                  if (window.turnstile) {
+                      try { cfToken = turnstile.getResponse(); } catch(e) {}
+                  }
+                  
+                  if (!u || !p) { Toast.show('请输入账号和密码'); break; }
+      
+                  API.req('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username: u, password: p, cfToken }),
+                  }).then(async (r) => {
+                      if (r && r.ok) {
+                        const d = await r.json();
+                        localStorage.setItem('authToken', d.token);
+                        localStorage.setItem('username', u);
+                        Router.go('main');
+                        Tabs.show('dash');
+                        App.load();
+                      } else {
+                        Toast.show('登录失败：账号或密码错误');
+                      }
+                  });
+                  break;
+               }
+
+               case 'sync': App.sync(id); break;
+               case 'preview': App.preview(id, token); break;
+               case 'history': App.history(id); break;
+               case 'activate': App.activate(id); break;
+               case 'copy': App.copySub(id, token); break;
+               case 'edit': {
+                  const item = App.data.items.find(i => i.id === id);
+                  if(item) Editor.edit(item);
+                  break;
+               }
+               case 'rollback': {
+                   const filename = target.dataset.filename;
+                   if(id && filename) App.rollback(id, filename);
+                   break;
+               }
+               // Modal Close Actions
+               case 'closePreview': 
+                  $('preview-overlay').classList.remove('open'); 
+                  document.body.style.overflow = '';
+                  break;
+               case 'closeHistory': 
+                  $('history-overlay').classList.remove('open'); 
+                  document.body.style.overflow = '';
+                  break;
+
+               // Editor Actions
+               case 'openEditor': Editor.open(); break;
+               case 'closeEditor': Editor.close(); break;
+               case 'saveEditor': Editor.save(); break;
+               case 'delSub': {
+                   const subId = target.dataset.id;
+                   if(subId) Editor.del(subId);
+                   break;
+               }
+               
+               // Global Settings Actions
+               case 'refreshAll': App.refreshAll(); break;
+               case 'refreshMonitor': Monitor.refresh(); break;
+               case 'toggleDashAuto': Dash.toggleAuto(); break;
+               case 'toggleAdv': toggleAdv(); break;
+               
+               // Settings Tab
+               case 'saveSettings': App.saveSettings(); break;
+               case 'testWebhook': App.testWebhook(); break;
+               case 'logout': Auth.logout(); break;
+            }
+         });
+         
+         // Event Delegation: Toggle Sync (Checkbox)
+         document.addEventListener('change', (e) => {
+             const target = e.target;
+             if(target.dataset.action === 'toggleSync') {
+                 App.toggleSync(target.dataset.id, target.checked);
+             }
+         });
+
+         // Event Delegation: Subscription Expand
+         document.addEventListener('click', (e) => {
+            const head = e.target.closest('.sub-head');
+            if (head) {
+               const card = head.closest('.sub-card');
+               if (card) {
+                  card.classList.toggle('expanded');
+                  const icon = head.querySelector('svg');
+                  if (icon) {
+                     icon.style.transform = card.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0)';
+                  }
+               }
+            }
+         });
+
+         // Search Filter
+         const searchInput = $('searchInput');
+         if(searchInput) {
+             searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                if (!App.data) return;
+                const filtered = App.data.items.filter(
+                  (i) => (i.name || '').toLowerCase().includes(term) || i.url.toLowerCase().includes(term)
+                );
+                App.renderSubs(filtered);
+             });
+         }
+      });
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
-# Contributing to SubLink Relay
+# Contributing to SubMirror
 
-感谢你对 SubLink Relay 的关注！我们非常欢迎任何形式的贡献，包括提交 Issue、改进文档或提交代码。
+感谢你对 SubMirror 的关注！我们非常欢迎任何形式的贡献，包括提交 Issue、改进文档或提交代码。
 
 ## 提交 Issue
 
