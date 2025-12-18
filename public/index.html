@@ -1804,7 +1804,13 @@
                // Editor Actions
                case 'openEditor': Editor.open(); break;
                case 'closeEditor': Editor.close(); break;
-               case 'saveEditor': Editor.save(); break;
+               case 'saveEditor': {
+                   // Ensure we prevent default to avoid form submission if wrapped in form
+                   e.preventDefault(); 
+                   console.log('Save Editor Clicked'); // Debug
+                   Editor.save(); 
+                   break;
+               }
                case 'delSub': {
                    const subId = target.dataset.id;
                    if(subId) Editor.del(subId);
