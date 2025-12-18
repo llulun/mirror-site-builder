@@ -567,7 +567,13 @@ async function saveSources() {
   isSaving = true;
   
   try {
-    const payload = { users: state.users };
+    // Deep clone and strip non-serializable fields (timers)
+    const usersToSave = {};
+    for (const [k, v] of Object.entries(state.users)) {
+       const { timer, timers, ...rest } = v;
+       usersToSave[k] = rest;
+    }
+    const payload = { users: usersToSave, sources: state.sources, activeId: state.activeId };
     await storage.write(sourcesKey, payload);
   } catch (e) {
     console.error('Failed to save sources:', e);
@@ -1316,8 +1322,9 @@ app.post('/sources/:id/toggle-sync', requireAuth, async (req, res) => {
   await saveSources();
   startTimersForUser(req.user.username);
   
-  // If enabling, trigger one sync immediately if none recent? 
-  // For now just start timer. Maybe user wants immediate sync, they can click sync.
+  if (item.enabled) {
+    triggerBackgroundSync(req.user.username, id);
+  }
   
   res.json({ ok: true, enabled: item.enabled });
 });
