@@ -15,6 +15,7 @@ yarn-error.log*
 
 # Runtime Data
 data/
+data_test/
 cache/
 
 # Build
@@ -30,6 +31,7 @@ coverage/
 .idea/
 *.swp
 *.swo
+.trae/
 
 # OS
 .DS_Store

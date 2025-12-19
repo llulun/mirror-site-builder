@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const compression = require('compression');
 const morgan = require('morgan');
@@ -9,6 +10,7 @@ const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 const { PassThrough } = require('stream');
 const dns = require('dns');
+const { v4: uuidv4 } = require('uuid');
 const { createStorage } = require('./storage');
 
 // Initialize storage adapter
@@ -145,6 +147,7 @@ async function ensureAdminToken() {
 }
 
 async function ensureAuthSecret() {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
   try {
     const cfg = await storage.readJSON(authSecretKey);
     if (cfg && typeof cfg.secret === 'string' && cfg.secret.length > 0) {
@@ -196,6 +199,9 @@ function getClientIp(req) {
   return (req.headers['x-forwarded-for'] || '').split(',')[0] || req.socket.remoteAddress;
 }
 
+const accessLogKey = 'logs/access.jsonl';
+const securityLogKey = 'logs/security.jsonl';
+
 async function recordAccess(req, sourceId, status, username = null) {
   const ip = getClientIp(req);
   const ua = req.headers['user-agent'] || 'Unknown';
@@ -231,16 +237,6 @@ async function recordAccess(req, sourceId, status, username = null) {
   state.uaStats[ua]++;
 
   // 3. Security Check (Simple Rate Limit: > 60 reqs / min)
-  const now = Date.now();
-  // We can't easily check "per minute" with just a counter unless we slide it.
-  // Simplified: Check if this IP has > 100 requests today AND interval < 100ms avg?
-  // Better: Token bucket or just simple flood check.
-  // Let's use a "short term" check.
-  
-  // Check High Frequency: If last request was < 500ms ago, increment "burst" counter?
-  // Let's trust the existing 'rateLimit' middleware for BLOCKING (429).
-  // But we want to ALERT.
-  
   // If status is 429 (Too Many Requests), trigger alert
   if (status === 429) {
      triggerSecurityAlert(ip, 'Rate Limit Exceeded', username);
@@ -259,10 +255,6 @@ async function triggerSecurityAlert(ip, reason, username) {
   
     // Persistent log
     storage.append(securityLogKey, JSON.stringify(alert) + '\n').catch(() => {});
-  
-    // Notify all users or specific user? For now notify all admins (users with webhook)
-  // Since we might not know which user "owns" the attack, we scan all users.
-  // Optimization: If username is provided, notify only them.
   
   const usersToNotify = username ? [getUser(username)] : Object.values(state.users);
   
@@ -459,7 +451,14 @@ function requireAuth(req, res, next) {
 }
 
 function idForUrl(u) {
-  return crypto.createHash('sha256').update(String(u)).digest('hex').slice(0, 24);
+  // Use UUID for IDs instead of hash to allow multiple subs to same URL if needed (though hash is good for dedup)
+  // But user request implies stability. Hash is stable.
+  // However, collision is possible if multiple users add same URL?
+  // Current logic: `state.sources` is global map.
+  // Wait, `state.sources` is LEGACY.
+  // `state.users[u].sources` is per user.
+  // If we use UUID, it's unique per item.
+  return uuidv4();
 }
 function cachePathFor(id) {
   return `sub_${id}.txt`;
@@ -513,6 +512,10 @@ async function loadSources() {
       for (const [k, v] of Object.entries(j.users || {})) {
         if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
         state.users[k] = v;
+        // Reset runtime flags
+        state.users[k].loading = false;
+        state.users[k].timer = null;
+        state.users[k].timers = {};
       }
     } else {
       // migrate legacy structure to current admin user
@@ -570,7 +573,7 @@ async function saveSources() {
     // Deep clone and strip non-serializable fields (timers)
     const usersToSave = {};
     for (const [k, v] of Object.entries(state.users)) {
-       const { timer, timers, ...rest } = v;
+       const { timer, timers, loading, ...rest } = v;
        usersToSave[k] = rest;
     }
     const payload = { users: usersToSave, sources: state.sources, activeId: state.activeId };
@@ -763,17 +766,6 @@ async function sendNotification(username, type, message) {
 
 const historyPrefix = 'history';
 
-// --- Persistent Logging Setup ---
-// Logs are special, we might want to keep using FS for now as streams,
-// but let's use the storage adapter's append if we want to be pure.
-// For now, let's assume logs are local-only or sidecar.
-// But wait, the user wants cloud native. In cloud native, logs usually go to stdout.
-// However, we implemented "Persistent Logging" to files just a moment ago.
-// Let's modify the logging to use storage.append() which we defined in the adapter.
-
-const accessLogKey = 'logs/access.jsonl';
-const securityLogKey = 'logs/security.jsonl';
-
 function historyDirFor(id) {
   // Return a prefix key for history items
   return path.join(historyPrefix, id);
@@ -787,10 +779,6 @@ async function saveHistory(id, buf) {
     
     await storage.write(key, buf);
     
-    // Cleanup: keep last 10
-    // storage.list should return relative paths or full keys?
-    // Our FileStorage implementation returns filenames relative to the dir we passed.
-    // Let's check storage.js: list(prefix) -> readdir(prefix) -> returns filenames
     const files = await storage.list(dirKey);
     files.sort(); 
     if (files.length > 10) {
@@ -891,6 +879,11 @@ async function processResponse(res, item, username, u, targetId) {
     if (res.status === 304) {
       u.loading = false;
       appendLog(username, 'success', 'Content not modified (304)');
+      // Even if not modified, update the timestamp to show we checked successfully
+      item.updatedAt = new Date().toISOString();
+      item.lastSyncStatus = 'success';
+      item.lastError = null;
+      await saveSources();
       return { ok: true, notModified: true };
     }
     if (!res.ok) {
@@ -1076,9 +1069,6 @@ app.get('/sub', (req, res) => {
   let id = state.activeId;
   let s = id ? findSourceById(id) : null;
   
-  // If no global activeId, we can try to find if this token matches *any* source?
-  // But /sub implies a single "active" subscription.
-  
   if (!s || !t || s.token !== t) {
     recordAccess(req, id || 'unknown', 403);
     return res.status(403).json({ message: 'forbidden' });
@@ -1089,10 +1079,6 @@ app.get('/sub', (req, res) => {
   }
   
   // Try to load content
-  // Legacy state.content is only for global activeId.
-  // If we found 's' via findSourceById, we should try to load its cache.
-  // If it matches global activeId, maybe state.content is populated.
-  
   if (state.activeId === id && state.content) {
      recordAccess(req, id, 200);
      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1194,8 +1180,6 @@ app.post('/sources/:id/rollback', requireAuth, async (req, res) => {
   }
 
   const p = path.join(historyDirFor(id), filename);
-  // Can't check exists easily without reading or stat-ing.
-  // Let's just try to read.
   
   try {
     const buf = await storage.read(p);
@@ -1259,16 +1243,12 @@ app.get('/sources', requireAuth, (req, res) => {
 app.get('/api/:adminId/sources', requireAdminAny, (req, res) => {
   res.json({ activeId: state.activeId, items: Object.values(state.sources) });
 });
-// triggerBackgroundSync definition was missing
+
 async function triggerBackgroundSync(username, id) {
-  // Fire and forget sync to ensure data is fresh immediately after action
-  // We don't await this so the API returns quickly
   fetchOnceForUser(username, id).catch(e => {
     console.error(`[Background Sync] Failed for ${username}/${id}:`, e);
   });
 }
-
-// ... existing code ...
 
 app.post('/sources', requireAuth, async (req, res) => {
   const v = validateSourcePayload(req.body || {}, 30);
@@ -1345,6 +1325,10 @@ app.put('/sources/:id', requireAuth, async (req, res) => {
   const usr = getUser(req.user.username);
   const item = usr.sources[id];
   if (!item) return res.status(404).json({ message: 'not_found' });
+  
+  // Guard: Don't update if loading
+  if (usr.loading) return res.status(409).json({ message: 'busy_syncing' });
+
   if (url) item.url = sanitizeUrl(url);
   if (name !== undefined) item.name = name ? String(name).slice(0, 50) : null;
   if (ua !== undefined) item.ua = ua ? String(ua).slice(0, 200) : undefined;
@@ -1385,6 +1369,10 @@ app.delete('/sources/:id', requireAuth, async (req, res) => {
   const id = String(req.params.id || '');
   const usr = getUser(req.user.username);
   if (!usr.sources[id]) return res.status(404).json({ message: 'not_found' });
+  
+  // Guard: Don't delete if loading
+  if (usr.loading) return res.status(409).json({ message: 'busy_syncing' });
+
   delete usr.sources[id];
   // stop timer
   if (usr.timers && usr.timers[id]) {
@@ -1462,9 +1450,6 @@ app.put('/api/:adminId/sources/:id', requireAdminAny, async (req, res) => {
     state.refreshMinutes = item.minutes;
     startTimer();
   }
-  // also restart user timers if needed (if admin modified via path api)
-  // this is a bit complex as we don't know which user owns it easily without scanning
-  // but path api is legacy/admin-only.
   res.json({ ok: true, token: item.token, expiresAt: item.expiresAt });
 });
 app.delete('/api/:adminId/sources/:id', requireAdminAny, async (req, res) => {
@@ -1508,7 +1493,6 @@ app.post('/api/:adminId/refresh', requireAdminAny, async (req, res) => {
 });
 // Auth endpoints
 app.get('/logs', requireAuth, (req, res) => {
-  console.log(`[DEBUG] /logs accessed by ${req.user.username}`);
   const u = getUser(req.user.username);
   res.json({ logs: u.logs || [] });
 });
@@ -1536,9 +1520,52 @@ app.get('/stats', requireAuth, (req, res) => {
 });
 
 // --- CLOUDFLARE TURNSTILE CONFIGURATION ---
-// Replace the value below with your actual Secret Key from Cloudflare Dashboard
-// You can also set this via environment variable: set CF_SECRET_KEY=your_secret_key
 const CF_SECRET_KEY = process.env.CF_SECRET_KEY || '1x0000000000000000000000000000000AA'; 
+const CF_SITE_KEY = process.env.CF_SITE_KEY || '1x00000000000000000000AA';
+
+app.get('/auth/config', (req, res) => {
+  res.json({ 
+    siteKey: CF_SITE_KEY,
+    enabled: !!process.env.CF_SECRET_KEY // Optional flag if we want to toggle it
+  });
+});
+
+async function verifyTurnstile(cfToken, ip) {
+  if (!CF_SECRET_KEY) return { ok: true }; // Not configured
+  
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
+  if (!cfToken) {
+     // Allow bypassing CAPTCHA in dev mode if using default key and localhost
+     if (isLocal && CF_SECRET_KEY === '1x0000000000000000000000000000000AA') {
+        return { ok: true };
+     } else {
+        return { ok: false, reason: 'missing_captcha' };
+     }
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.append('secret', CF_SECRET_KEY);
+    formData.append('response', cfToken);
+    formData.append('remoteip', ip);
+
+    const cfRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      body: formData,
+    });
+    const cfData = await cfRes.json();
+    if (!cfData.success) {
+      return { ok: false, reason: 'captcha_failed' };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('Turnstile error:', e);
+    // Open fail or close fail? Let's close fail for security, but might block if network issue.
+    // For high security, return fail.
+    return { ok: false, reason: 'captcha_verification_error' };
+  }
+}
 
 // Login brute-force protection
 const loginFailures = {}; // ip -> { count, lockedUntil }
@@ -1572,39 +1599,9 @@ app.post('/auth/login', async (req, res) => {
 
   const { username, password, cfToken } = req.body || {};
   
-  // Verify Turnstile Token
-  // Only verify if provided (for backward compat or optional mode), 
-  // BUT for security you should enforce it. 
-  // Here we enforce it if CF_SECRET_KEY is configured (which is default dummy).
-  if (CF_SECRET_KEY) {
-    if (!cfToken) {
-       // Allow bypassing CAPTCHA in dev mode if using default key and localhost
-       if (isLocal && CF_SECRET_KEY === '1x0000000000000000000000000000000AA') {
-          // bypass
-       } else {
-          return res.status(400).json({ message: 'missing_captcha' });
-       }
-    } else {
-      try {
-        const formData = new URLSearchParams();
-        formData.append('secret', CF_SECRET_KEY);
-        formData.append('response', cfToken);
-        formData.append('remoteip', ip);
-  
-        const cfRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-          method: 'POST',
-          body: formData,
-        });
-        const cfData = await cfRes.json();
-        if (!cfData.success) {
-          return res.status(403).json({ message: 'captcha_failed' });
-        }
-      } catch (e) {
-        console.error('Turnstile error:', e);
-        // Fail open or closed? Fail open for now if CF is down, but safer to fail closed.
-        // return res.status(500).json({ message: 'captcha_error' });
-      }
-    }
+  const cfCheck = await verifyTurnstile(cfToken, ip);
+  if (!cfCheck.ok) {
+     return res.status(403).json({ message: cfCheck.reason });
   }
 
   const u = String(username || '').trim();
@@ -1634,7 +1631,6 @@ app.post('/auth/login', async (req, res) => {
       triggerSecurityAlert(ip, 'Brute Force Login Blocked', null);
     }
     
-    // Add random delay to mitigate timing attacks and slow down brute force (500ms - 1500ms)
     const delay = Math.floor(Math.random() * 1000) + 500;
     await new Promise(resolve => setTimeout(resolve, delay));
 
@@ -1659,8 +1655,15 @@ app.get('/auth/me', (req, res) => {
 });
 
 app.post('/auth/change-password', requireAuth, async (req, res) => {
-  const { currentPassword, newPassword } = req.body || {};
+  const { currentPassword, newPassword, cfToken } = req.body || {};
   if (!currentPassword || !newPassword) return res.status(400).json({ message: 'missing_fields' });
+
+  // 0. Verify Turnstile
+  const ip = getClientIp(req);
+  const cfCheck = await verifyTurnstile(cfToken, ip);
+  if (!cfCheck.ok) {
+     return res.status(403).json({ message: cfCheck.reason });
+  }
 
   // 1. Verify current password
   const cfg = await readAdminConfig();
@@ -1669,10 +1672,6 @@ app.post('/auth/change-password', requireAuth, async (req, res) => {
   const confHash = process.env.ADMIN_PASS_HASH || cfg.admin_pass_hash;
   const confSalt = process.env.ADMIN_SALT || cfg.admin_salt;
 
-  // We assume the logged-in user is the admin (since it's a single-user system effectively for admin tasks)
-  // But wait, requireAuth populates req.user.username.
-  // If we have multi-users in future, this needs to be user-specific.
-  // For now, let's assume this changes the MAIN admin password if the user is admin.
   if (req.user.username !== confUser) {
     return res.status(403).json({ message: 'only_admin_can_change_password' });
   }
@@ -1680,7 +1679,6 @@ app.post('/auth/change-password', requireAuth, async (req, res) => {
   const passOk = confHash && confSalt ? verifyPassword(currentPassword, confHash, confSalt) : String(currentPassword) === String(confPass);
   
   if (!passOk) {
-    // Add delay here too
     await new Promise(resolve => setTimeout(resolve, 1000));
     return res.status(401).json({ message: 'invalid_current_password' });
   }
@@ -1689,8 +1687,6 @@ app.post('/auth/change-password', requireAuth, async (req, res) => {
   if (newPassword.length < 10) {
     return res.status(400).json({ message: 'password_too_short_min_10' });
   }
-  // At least one uppercase, one lowercase, one number, one special char
-  // Simplified: mixed case and number
   if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
      return res.status(400).json({ message: 'password_complexity_failed: must contain uppercase, lowercase and number' });
   }
@@ -1720,7 +1716,9 @@ async function bootstrap() {
   Object.keys(state.users || {}).forEach((username) => {
     startTimersForUser(username);
   });
-  app.listen(port, () => {});
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
 }
 
 bootstrap();

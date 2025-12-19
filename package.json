@@ -1,6 +1,6 @@
 {
   "name": "sub-mirror",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "轻量级订阅镜像与管理工具：解决配置同步不稳定问题，支持多源缓存、正则过滤与高速分发",
   "license": "MIT",
@@ -24,12 +24,14 @@
   "dependencies": {
     "cheerio": "^1.0.0",
     "compression": "^1.7.4",
+    "dotenv": "^17.2.3",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.0",
     "helmet": "^8.1.0",
     "http-proxy-middleware": "^3.0.0",
     "morgan": "^1.10.0",
-    "undici": "^6.19.8"
+    "undici": "^6.19.8",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

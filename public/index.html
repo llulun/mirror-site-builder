@@ -281,12 +281,16 @@
         transition: all 0.2s;
         width: 100%;
       }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
       .btn-primary {
         background: var(--color-primary);
         color: #fff;
         box-shadow: var(--shadow-md);
       }
-      .btn-primary:active {
+      .btn-primary:active:not(:disabled) {
         transform: scale(0.98);
         opacity: 0.9;
       }
@@ -633,10 +637,10 @@
 
         <!-- 
            --- CLOUDFLARE TURNSTILE CONFIGURATION ---
-           Replace 'data-sitekey' below with your actual Site Key from Cloudflare Dashboard.
-           Currently using a dummy test key: 1x00000000000000000000AA
+           Container for Turnstile widget. 
+           Site Key is fetched from /auth/config on load.
         -->
-        <div id="cf-turnstile" class="cf-turnstile" data-sitekey="1x00000000000000000000AA" style="margin-bottom: 16px; display: flex; justify-content: center;"></div>
+        <div id="cf-login" style="margin-bottom: 16px; display: flex; justify-content: center; min-height:65px"></div>
 
         <button id="btnLogin" class="btn btn-primary" style="margin-top: 16px" data-action="login">登 录</button>
       </div>
@@ -887,10 +891,11 @@
             </div>
             <div class="settings-item">
               <span class="settings-label">当前版本</span>
-              <span class="settings-val">v1.0.0</span>
+              <span class="settings-val">v1.1.0</span>
             </div>
           </div>
 
+          <button class="btn btn-secondary" style="margin-bottom:12px" data-action="openPasswordModal">修改密码</button>
           <button class="btn btn-danger" data-action="logout">退出登录</button>
         </div>
       </div>
@@ -1044,6 +1049,28 @@
       </div>
     </div>
 
+    <!-- === COMPONENT: CHANGE PASSWORD MODAL === -->
+    <div id="password-overlay" class="modal-overlay">
+      <div class="sheet">
+        <h3 style="margin-top: 0; margin-bottom: 24px">修改密码</h3>
+        <div class="input-group">
+          <label class="input-label">当前密码</label>
+          <input id="pwdCurrent" type="password" class="input-field" />
+        </div>
+        <div class="input-group">
+          <label class="input-label">新密码</label>
+          <input id="pwdNew" type="password" class="input-field" placeholder="至少10位，含大小写字母和数字" />
+        </div>
+
+        <div id="cf-pwd" style="display: flex; justify-content: center; margin-top: 16px; min-height: 65px;"></div>
+
+        <div style="display: flex; gap: 12px; margin-top: 24px">
+          <button class="btn btn-secondary" data-action="closePassword">取消</button>
+          <button class="btn btn-primary" data-action="savePassword">保存</button>
+        </div>
+      </div>
+    </div>
+
     <!-- === COMPONENT: PREVIEW MODAL === -->
     <div id="preview-overlay" class="modal-overlay">
        <div class="sheet" style="height:80vh; display:flex; flex-direction:column;">
@@ -1097,6 +1124,20 @@
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#039;');
       };
+      
+      window.timeAgo = (dateStr) => {
+        if (!dateStr) return '从未';
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return '无效时间';
+        const now = new Date();
+        const diff = (now - date) / 1000; // seconds
+
+        if (diff < 60) return '刚刚';
+        if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+        if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+        if (diff < 2592000) return Math.floor(diff / 86400) + ' 天前';
+        return date.toLocaleString();
+      };
 
       window.Toast = {
         show(msg) {
@@ -1141,6 +1182,16 @@
       // --- Auth & API ---
       window.API = {
         base: location.origin,
+        config: { siteKey: null }, // Store config here
+        async initConfig() {
+           try {
+              const r = await fetch(this.base + '/auth/config');
+              if (r.ok) {
+                 this.config = await r.json();
+                 console.log('Config loaded:', this.config);
+              }
+           } catch(e) { console.error('Config load failed', e); }
+        },
         get headers() {
           const t = localStorage.getItem('authToken');
           return t
@@ -1167,25 +1218,47 @@
       };
 
       window.Auth = {
-        init() {
+        loginWidgetId: null,
+        async init() {
           const btnLogin = $('btnLogin');
-          // Removed manual onclick binding in favor of global data-action delegation
-          // if (btnLogin) { btnLogin.onclick = ... }
-
-          if (localStorage.getItem('authToken')) {
+          
+          // Render Login Widget if on login page
+          if (!localStorage.getItem('authToken')) {
+             Router.go('login');
+             // Wait for config and turnstile
+             if (!API.config.siteKey) await API.initConfig();
+             this.renderLoginWidget();
+          } else {
             Router.go('main');
             // Defer tab switch slightly to ensure DOM is ready
             setTimeout(() => {
                Tabs.show('dash');
                App.load();
             }, 50);
-          } else {
-            Router.go('login');
           }
+        },
+        renderLoginWidget() {
+            if (window.turnstile && API.config.siteKey && !this.loginWidgetId) {
+                try {
+                    const el = $('cf-login');
+                    if (el) {
+                        el.innerHTML = ''; // clear
+                        this.loginWidgetId = turnstile.render('#cf-login', {
+                            sitekey: API.config.siteKey,
+                            theme: 'auto'
+                        });
+                    }
+                } catch(e) { console.error('Turnstile render error (login)', e); }
+            } else if (!window.turnstile) {
+                // Retry if turnstile not loaded yet
+                setTimeout(() => this.renderLoginWidget(), 500);
+            }
         },
         logout() {
           localStorage.removeItem('authToken');
           Router.go('login');
+          // Re-render widget on logout
+          setTimeout(() => this.renderLoginWidget(), 100); 
         },
       };
 
@@ -1409,6 +1482,7 @@
       // --- App Logic ---
       window.App = {
         data: null,
+        isLoading: false,
         async load() {
           const uElem = $('profileUser');
           if(uElem) uElem.textContent = localStorage.getItem('username') || 'Admin';
@@ -1421,9 +1495,14 @@
              ]);
    
              if (stRes) {
-               if($('st-updated')) $('st-updated').textContent = stRes.updatedAt ? new Date(stRes.updatedAt).toLocaleTimeString() : '从未';
+               this.isLoading = !!stRes.loading;
+               if($('st-updated')) $('st-updated').textContent = stRes.updatedAt ? timeAgo(stRes.updatedAt) : '从未';
                if($('st-memory')) $('st-memory').textContent = stRes.memory ? Math.round(stRes.memory / 1024 / 1024) + ' MB' : '-';
                if($('webhookInput')) $('webhookInput').value = stRes.webhook || '';
+               if($('st-status')) {
+                  $('st-status').textContent = this.isLoading ? '同步中...' : '运行中';
+                  $('st-status').className = this.isLoading ? 'badge' : 'badge active';
+               }
              }
    
              this.data = srcRes || { items: [], activeId: null };
@@ -1450,6 +1529,7 @@
             el.className = 'sub-card';
             const isActive = item.id === this.data.activeId;
             const isEnabled = !!item.enabled;
+            const isLoading = this.isLoading; 
 
             el.innerHTML = `
                   <div class="sub-head">
@@ -1461,7 +1541,7 @@
                            ${item.lastSyncStatus === 'error' ? '<span class="badge danger">同步失败</span>' : ''}
                         </div>
                         <div class="sub-url">${escapeHtml(item.url)}</div>
-                        ${item.updatedAt ? `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:4px">上次同步: ${new Date(item.updatedAt).toLocaleString()}</div>` : ''}
+                        ${item.updatedAt ? `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-top:4px">上次同步: ${timeAgo(item.updatedAt)}</div>` : ''}
                      </div>
                      <div style="color:var(--text-secondary)">
                         <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="pointer-events:none"><path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1473,16 +1553,16 @@
                         <span class="badge">${item.minutes}分钟同步</span>
                         <span class="badge">${item.ua ? '自定义UA' : '默认UA'}</span>
                         <label style="display:flex; align-items:center; gap:8px; margin-left:auto; cursor:pointer">
-                           <input type="checkbox" ${isEnabled ? 'checked' : ''} data-action="toggleSync" data-id="${item.id}">
+                           <input type="checkbox" ${isEnabled ? 'checked' : ''} data-action="toggleSync" data-id="${item.id}" ${isLoading ? 'disabled' : ''}>
                            <span style="font-size:0.85rem">自动同步</span>
                         </label>
                      </div>
                      <div style="display:flex; gap:8px">
-                        <button class="btn btn-primary" data-action="sync" data-id="${item.id}" style="width:auto">立即同步</button>
+                        <button class="btn btn-primary" data-action="sync" data-id="${item.id}" style="width:auto" ${isLoading ? 'disabled' : ''}>${isLoading ? '同步中...' : '立即同步'}</button>
                         <button class="btn btn-secondary" data-action="preview" data-id="${item.id}" data-token="${item.token}" style="width:auto">预览</button>
                         <button class="btn btn-secondary" data-action="history" data-id="${item.id}" style="width:auto">历史</button>
-                        ${!isActive ? `<button class="btn btn-secondary" data-action="activate" data-id="${item.id}" style="flex:1">设为默认</button>` : ''}
-                        <button class="btn btn-secondary" data-action="edit" data-id="${item.id}" style="flex:1">编辑</button>
+                        ${!isActive ? `<button class="btn btn-secondary" data-action="activate" data-id="${item.id}" style="flex:1" ${isLoading ? 'disabled' : ''}>设为默认</button>` : ''}
+                        <button class="btn btn-secondary" data-action="edit" data-id="${item.id}" style="flex:1" ${isLoading ? 'disabled' : ''}>编辑</button>
                         <button class="btn btn-secondary" data-action="copy" data-id="${item.id}" data-token="${item.token}" style="width:auto">复制链接</button>
                      </div>
                   </div></div></div>
@@ -1526,13 +1606,19 @@
 
         async sync(id) {
            Toast.show('开始同步...');
+           // Optimistic update
+           this.isLoading = true;
+           this.renderSubs(this.data.items);
+           
            const r = await API.req(`/sources/${id}/sync`, { method: 'POST' });
            if (r && r.ok) {
               Toast.show('同步成功');
-              this.load();
+              this.load(); // Reloads real state
            } else {
               const d = r ? await r.json() : {};
               Toast.show('同步失败: ' + (d.reason || 'Unknown'));
+              this.isLoading = false;
+              this.renderSubs(this.data.items);
            }
         },
 
@@ -1619,6 +1705,64 @@
                Toast.show('发送失败: ' + (d.message || 'Unknown'));
             }
          },
+         
+         // Password Modal Actions
+          pwdWidgetId: null,
+ 
+          async openPasswordModal() {
+             $('pwdCurrent').value = '';
+             $('pwdNew').value = '';
+             $('password-overlay').classList.add('open');
+             
+             // Ensure config loaded
+             if (!API.config.siteKey) await API.initConfig();
+ 
+             // Render Turnstile
+             if (window.turnstile && API.config.siteKey) {
+                try {
+                    // Remove existing if any (though reset is usually enough)
+                    if (this.pwdWidgetId) turnstile.remove(this.pwdWidgetId);
+                    
+                    this.pwdWidgetId = turnstile.render('#cf-pwd', {
+                        sitekey: API.config.siteKey,
+                        theme: 'auto'
+                    });
+                } catch(e) { console.error('Turnstile render error', e); }
+             }
+          },
+         closePasswordModal() {
+            $('password-overlay').classList.remove('open');
+            if (this.pwdWidgetId && window.turnstile) {
+                try { turnstile.remove(this.pwdWidgetId); } catch(e) {}
+                this.pwdWidgetId = null;
+            }
+         },
+         async savePassword() {
+            const current = $('pwdCurrent').value;
+            const newPwd = $('pwdNew').value;
+            if(!current || !newPwd) return Toast.show('请填写所有字段');
+            
+            let cfToken = null;
+            if (this.pwdWidgetId && window.turnstile) {
+                cfToken = turnstile.getResponse(this.pwdWidgetId);
+                if (!cfToken) return Toast.show('请完成人机验证');
+            }
+
+            Toast.show('正在提交...');
+            const r = await API.req('/auth/change-password', {
+               method: 'POST',
+               body: JSON.stringify({ currentPassword: current, newPassword: newPwd, cfToken })
+            });
+            if (r && r.ok) {
+               Toast.show('密码修改成功，请重新登录');
+               setTimeout(() => Auth.logout(), 1500);
+            } else {
+               const d = r ? await r.json() : {};
+               Toast.show('修改失败: ' + (d.message || 'Unknown'));
+               // Reset turnstile on failure
+               if (this.pwdWidgetId && window.turnstile) turnstile.reset(this.pwdWidgetId);
+            }
+         }
        };
 
       window.Editor = {
@@ -1703,9 +1847,6 @@
         },
       };
 
-      // Global Toggles (Deprecated, moved to event delegation)
-      // window.toggleSub = ... 
-
       window.toggleAdv = () => {
         const el = $('adv-area');
         if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -1752,11 +1893,15 @@
                   const u = $('loginUser').value;
                   const p = $('loginPass').value;
                   let cfToken = null;
-                  if (window.turnstile) {
-                      try { cfToken = turnstile.getResponse(); } catch(e) {}
+                  
+                  // Get token from widget if active
+                  if (Auth.loginWidgetId && window.turnstile) {
+                      cfToken = turnstile.getResponse(Auth.loginWidgetId);
                   }
                   
                   if (!u || !p) { Toast.show('请输入账号和密码'); break; }
+                  // If site key is configured, require captcha
+                  if (API.config.siteKey && !cfToken) { Toast.show('请完成人机验证'); break; }
       
                   API.req('/auth/login', {
                     method: 'POST',
@@ -1805,7 +1950,6 @@
                case 'openEditor': Editor.open(); break;
                case 'closeEditor': Editor.close(); break;
                case 'saveEditor': {
-                   // Ensure we prevent default to avoid form submission if wrapped in form
                    e.preventDefault(); 
                    console.log('Save Editor Clicked'); // Debug
                    Editor.save(); 
@@ -1827,6 +1971,11 @@
                case 'saveSettings': App.saveSettings(); break;
                case 'testWebhook': App.testWebhook(); break;
                case 'logout': Auth.logout(); break;
+
+               // Password Modal
+               case 'openPasswordModal': App.openPasswordModal(); break;
+               case 'closePassword': App.closePasswordModal(); break;
+               case 'savePassword': App.savePassword(); break;
             }
          });
          
