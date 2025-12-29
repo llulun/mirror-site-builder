@@ -4,7 +4,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const { fetch } = require('undici');
+const { fetch, Agent } = require('undici');
 const path = require('path');
 const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
@@ -12,6 +12,19 @@ const { PassThrough } = require('stream');
 const dns = require('dns');
 const { v4: uuidv4 } = require('uuid');
 const { createStorage } = require('./storage');
+
+// Initialize custom dispatcher for better compatibility
+const agent = new Agent({
+  connect: {
+    rejectUnauthorized: false, // Allow self-signed certs (often used in private subscriptions)
+    timeout: 30000
+  },
+  pipelining: 0, // Disable pipelining to avoid some server issues
+  headersTimeout: 30000,
+  bodyTimeout: 30000,
+  keepAliveTimeout: 4000,
+  keepAliveMaxTimeout: 600000,
+});
 
 // Initialize storage adapter
 const storage = createStorage();
@@ -43,12 +56,25 @@ function isPrivateIp(ip) {
 
 async function validateTargetUrl(urlStr) {
   try {
-    const u = new URL(urlStr);
+    // If we skipped parsing in sanitizeUrl, we still need to extract hostname for DNS check
+    // Try relaxed parsing
+    let u;
+    try {
+        u = new URL(urlStr);
+    } catch {
+        // Fallback: simple regex extraction for hostname if URL parser fails on complex query strings
+        const match = urlStr.match(/^https?:\/\/([^\/]+)/);
+        if (!match) throw new Error('invalid_url_structure');
+        u = { hostname: match[1], protocol: urlStr.startsWith('https') ? 'https:' : 'http:' };
+    }
+
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
        throw new Error('invalid_protocol');
     }
     // Resolve hostname
-    const { address } = await dns.promises.lookup(u.hostname);
+    // Clean hostname (remove port)
+    const hostname = u.hostname.split(':')[0];
+    const { address } = await dns.promises.lookup(hostname);
     if (isPrivateIp(address)) {
       throw new Error('private_ip_forbidden');
     }
@@ -283,12 +309,28 @@ function sanitizeUrl(u) {
   const idx = s.indexOf('http');
   if (idx > 0) s = s.slice(idx);
   
+  // Skip validation if it looks like a valid URL structure but fails strict parsing
+  // This is to support complex subscription URLs with special chars
+  if (s.startsWith('http')) return s;
+
   try {
+    // Attempt to handle unencoded characters that might cause 400 errors
+    // If URL creation fails, try encoding common problematic chars
+    if (s.includes(' ') || s.includes('|') || s.includes('^') || s.includes('`') || s.includes('{') || s.includes('}')) {
+       s = encodeURI(s);
+    }
     const parsed = new URL(s);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
     return parsed.href;
   } catch {
-    return null;
+    // Second try: forceful full encoding if simple parsing failed
+    try {
+        const parsed = new URL(encodeURI(s));
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        return parsed.href;
+    } catch {
+        return null;
+    }
   }
 }
 function clampMinutes(m) {
@@ -617,12 +659,12 @@ async function fetchWithLimit(res) {
 }
 
 const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0'
+  'Clash/1.18.0',
+  'ClashMeta/1.16.0',
+  'OpenClash/0.45.121-beta',
+  'Shadowrocket/1072',
+  'Quantumult%20X/1.0.30',
+  'Stash/2.4.5'
 ];
 
 function getRandomUA() {
@@ -650,7 +692,7 @@ async function fetchOnce() {
     const res = await fetch(state.sourceUrl, {
       method: 'GET',
       headers: {
-        Accept: 'text/plain, application/yaml, application/octet-stream, */*',
+        Accept: '*/*',
         'User-Agent': item.ua || getRandomUA(),
         ...(item.etag ? { 'If-None-Match': item.etag } : {}),
       },
@@ -814,51 +856,33 @@ async function fetchOnceForUser(username, sourceId = null) {
     const t = setTimeout(() => controller.abort(), 30000);
     appendLog(username, 'info', 'Downloading content...');
     
-    // Use manual redirect handling for better SSRF protection and debugging
-    const res = await fetch(item.url, {
-      method: 'GET',
-      headers: {
-        Accept: 'text/plain, application/yaml, application/octet-stream, */*',
-        'User-Agent': item.ua || getRandomUA(),
+    // Use standard redirect handling
+    const headers = {
+        'Accept': '*/*',
+        'User-Agent': item.ua || getRandomUA(), // Use the random UA (Clash/Shadowrocket etc)
         ...(item.etag ? { 'If-None-Match': item.etag } : {}),
-      },
+    };
+
+    // If user provided custom UA, use it
+    if (item.ua) {
+        headers['User-Agent'] = item.ua;
+    }
+
+    const res = await fetch(item.url, {
+      dispatcher: agent, // Use custom dispatcher
+      method: 'GET',
+      headers,
       signal: controller.signal,
-      redirect: 'manual' 
+      redirect: 'follow'
     });
     
     clearTimeout(t);
-
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-       // Handle redirect manually
-       const loc = res.headers.get('location');
-       const nextUrl = new URL(loc, item.url).href; // resolve relative redirect
-       appendLog(username, 'info', `Redirecting to ${nextUrl}`);
-       
-       // Validate next URL
-       try {
-         await validateTargetUrl(nextUrl);
-       } catch (e) {
-          throw new Error(`Redirect target forbidden: ${e.message}`);
-       }
-       
-       // Follow one level of redirect (recursive not implemented for simplicity/safety)
-       const controller2 = new AbortController();
-       const t2 = setTimeout(() => controller2.abort(), 30000);
-       const res2 = await fetch(nextUrl, {
-          method: 'GET',
-          headers: {
-            Accept: 'text/plain, application/yaml, application/octet-stream, */*',
-            'User-Agent': item.ua || getRandomUA(),
-          },
-          signal: controller2.signal,
-       });
-       clearTimeout(t2);
-       
-       if (!res2.ok) {
-         throw new Error(`Redirect failed: ${res2.status} ${res2.statusText}`);
-       }
-       // Use res2 as result
-       return await processResponse(res2, item, username, u, targetId);
+    
+    // Validate final URL after redirect to prevent SSRF bypass
+    try {
+        await validateTargetUrl(res.url);
+    } catch (e) {
+        throw new Error(`Final URL forbidden: ${e.message}`);
     }
 
     return await processResponse(res, item, username, u, targetId);
@@ -889,6 +913,13 @@ async function processResponse(res, item, username, u, targetId) {
     if (!res.ok) {
       u.loading = false;
       const err = `Upstream error: ${res.status} ${res.statusText}`;
+      
+      // Try to read body for debug
+      try {
+         const body = await res.text();
+         console.error(`[UPSTREAM ERROR BODY] ${res.status} from ${item.url}:\n${body.slice(0, 500)}`);
+      } catch {}
+
       appendLog(username, 'error', err);
       sendNotification(username, 'error', `Sync failed for ${item.name || item.url}: ${err}`);
       item.lastError = err;

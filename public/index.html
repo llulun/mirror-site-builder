@@ -1238,24 +1238,31 @@
           }
         },
         renderLoginWidget() {
-            if (window.turnstile && API.config.siteKey && !this.loginWidgetId) {
+            if (window.turnstile && API.config.siteKey) {
                 try {
                     const el = $('cf-login');
                     if (el) {
-                        el.innerHTML = ''; // clear
+                        // If widget ID exists, try to reset it first, but full re-render is safer for SPA
+                        if (this.loginWidgetId) {
+                           try { turnstile.remove(this.loginWidgetId); } catch(e) {}
+                           this.loginWidgetId = null;
+                        }
+                        
+                        el.innerHTML = ''; // clear container
                         this.loginWidgetId = turnstile.render('#cf-login', {
                             sitekey: API.config.siteKey,
                             theme: 'auto'
                         });
                     }
                 } catch(e) { console.error('Turnstile render error (login)', e); }
-            } else if (!window.turnstile) {
-                // Retry if turnstile not loaded yet
+            } else {
+                // Retry if turnstile or config not loaded yet
                 setTimeout(() => this.renderLoginWidget(), 500);
             }
         },
         logout() {
           localStorage.removeItem('authToken');
+          this.loginWidgetId = null; // Reset widget state to force re-render
           Router.go('login');
           // Re-render widget on logout
           setTimeout(() => this.renderLoginWidget(), 100); 
